@@ -1,0 +1,6 @@
+data/
+data_home/
+__pycache__/
+*.pyc
+.pytest_cache/
+.streamlit/

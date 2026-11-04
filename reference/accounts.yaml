@@ -1,0 +1,60 @@
+# Account registry — the single source of truth for every account the tracker knows.
+# Adding a new account = add an entry here. Nothing else changes.
+# owner: personal | corporate      managed: true = robo/advisor sleeve (analyzed separately)
+accounts:
+  HQ5HC7ZK3:
+    name: TFSA
+    institution: wealthsimple
+    type: tfsa
+    owner: personal
+    managed: false
+    base_currency: CAD
+    tax_notes: No exit tax at emigration; India taxes growth after move. US dividends face 15% NRT here.
+  HQ7NQ2N43:
+    name: RRSP
+    institution: wealthsimple
+    type: rrsp
+    owner: personal
+    managed: false
+    base_currency: CAD
+    tax_notes: US dividends withholding-exempt. Survives emigration tax-deferred.
+  HQC1MB101:
+    name: Non-registered (concentrated)
+    institution: wealthsimple
+    type: non_registered
+    owner: personal
+    managed: false
+    base_currency: CAD
+    tax_notes: Deemed disposition at emigration. Track ACB.
+  HQBS9FH02:
+    name: Non-registered (exploration)
+    institution: wealthsimple
+    type: non_registered
+    owner: personal
+    managed: false
+    base_currency: CAD
+    tax_notes: Deemed disposition at emigration. Track ACB.
+  HQCTB0B05:
+    name: LOC non-registered (leveraged)
+    institution: wealthsimple
+    type: non_registered_loc
+    owner: personal
+    managed: false
+    base_currency: CAD
+    tax_notes: Borrowed funds - interest deductibility depends on use; watch ROC distributions (DFN/HMAX).
+  WZ0PZNS05:
+    name: Auto-invest (direct indexing)
+    institution: wealthsimple
+    type: managed
+    owner: personal
+    managed: true
+    base_currency: CAD
+    tax_notes: Managed sleeve. Monthly service fee.
+  WK8MHR800:
+    name: Income portfolio (managed)
+    institution: wealthsimple
+    type: managed
+    owner: personal
+    managed: true
+    base_currency: CAD
+    tax_notes: Managed sleeve. Monthly management fee.
