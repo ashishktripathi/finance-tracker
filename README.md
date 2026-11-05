@@ -1,3 +1,13 @@
+---
+title: Finance Tracker
+emoji: 📊
+colorFrom: blue
+colorTo: gray
+sdk: streamlit
+app_file: app/main.py
+pinned: false
+---
+
 # Finance Tracker
 
 Personal financial data platform. V1 domain: investments (Wealthsimple, 7 accounts).
