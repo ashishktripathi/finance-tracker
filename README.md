@@ -32,6 +32,16 @@ make install
 make rebuild RAW="<path to Finance/raw/wealthsimple>"   # rebuilds warehouse from all months
 ```
 
+## Cloud deploy (Streamlit Community Cloud)
+The app runs hosted at share.streamlit.io, deployed from this private repo:
+- Data source in the cloud: CSVs committed under `data_cloud/wealthsimple/YYYY/YYYY-MM/`
+  (the warehouse rebuilds itself on boot — same disposable-DB rule as local).
+- Access: set the `APP_PASSWORD` secret in the app's Settings → Secrets
+  (`APP_PASSWORD = "..."`); the app shows a password gate when it's set.
+  No secret set = open local mode.
+- Monthly: drop the new month's CSVs in BOTH Drive (`raw/`) and `data_cloud/`,
+  commit + push → the cloud app redeploys itself with the new month.
+
 ## Rules of the codebase
 - Parsers change only with a failing golden test first (`tests/`).
 - New account = entry in `accounts.yaml`. New institution = new module in `src/tracker/ingest/`.

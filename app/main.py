@@ -3,6 +3,8 @@
 Run locally:  streamlit run app/main.py
 Reads only the DuckDB warehouse; no logic beyond display lives here.
 """
+import hmac
+import sys
 from pathlib import Path
 
 import duckdb
@@ -10,13 +12,70 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-DB = Path(__file__).resolve().parents[1] / "data" / "warehouse.duckdb"
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))  # so `tracker` imports without PYTHONPATH
+
+DB = ROOT / "data" / "warehouse.duckdb"
+CLOUD_DATA = ROOT / "data_cloud" / "wealthsimple"
 
 st.set_page_config(page_title="Finance Tracker", layout="wide")
+
+
+def _secret(name: str) -> str:
+    try:
+        return st.secrets.get(name, "")
+    except Exception:  # no secrets.toml configured (plain local run)
+        return ""
+
+
+def check_password() -> None:
+    """Gate the whole app behind APP_PASSWORD when that secret is set (cloud deploys)."""
+    pw = _secret("APP_PASSWORD")
+    if not pw or st.session_state.get("auth_ok"):
+        return
+    st.title("Finance Tracker")
+    with st.form("login"):
+        entered = st.text_input("Password", type="password")
+        if st.form_submit_button("Enter"):
+            if hmac.compare_digest(entered, pw):
+                st.session_state["auth_ok"] = True
+                st.rerun()
+            else:
+                st.error("Wrong password")
+    st.stop()
+
+
+check_password()
 st.title("Finance Tracker")
 
-if not DB.exists():
-    st.error("No warehouse found. Run `make ingest MONTH=YYYY-MM` first.")
+
+@st.cache_resource
+def bootstrap_warehouse() -> bool:
+    """On a fresh container (cloud deploy), rebuild the warehouse from CSVs
+    committed under data_cloud/wealthsimple/YYYY/YYYY-MM/. Locally, the
+    existing warehouse built by `make ingest` is used as-is."""
+    if DB.exists():
+        return True
+    if not CLOUD_DATA.exists():
+        return False
+    from tracker.ingest.wealthsimple import parse_month_dir
+    from tracker.load import connect, load_aliases, refresh_accounts_table, upsert_transactions
+
+    month_dirs = sorted(d for d in CLOUD_DATA.glob("*/*") if d.is_dir())
+    if not month_dirs:
+        return False
+    con = connect()
+    refresh_accounts_table(con)
+    aliases = load_aliases()
+    for d in month_dirs:
+        upsert_transactions(con, parse_month_dir(d, aliases))
+    con.close()
+    return True
+
+
+if not bootstrap_warehouse():
+    st.error("No warehouse found. Run `make ingest MONTH=YYYY-MM` locally, or commit "
+             "statement CSVs under data_cloud/wealthsimple/YYYY/YYYY-MM/ for cloud deploys.")
     st.stop()
 
 con = duckdb.connect(str(DB), read_only=True)
