@@ -49,8 +49,8 @@ k = q(f"""
 c = st.columns(6)
 c[0].metric("Dividends", f"${k.dividends or 0:,.2f}")
 c[1].metric("US withholding (NRT)", f"${k.withholding or 0:,.2f}")
-c[2].metric("Bought", f"${k.bought or 0:,.2f}")
-c[3].metric("Sold", f"${k.sold or 0:,.2f}")
+c[2].metric("Bought", f"${k.bought or 0:,.0f}")
+c[3].metric("Sold", f"${k.sold or 0:,.0f}")
 c[4].metric("Fees", f"${k.fees or 0:,.2f}")
 c[5].metric("Active tickers", int(k.active_tickers or 0))
 
@@ -75,7 +75,7 @@ with tab_inc:
     df = q(f"""
         SELECT ticker, a.name AS account, round(sum(amount),2) AS dividends, max(t.currency) AS ccy
         FROM transactions t JOIN accounts a USING(account_id)
-        WHERE {base} AND type='DIV' GROUP BY 1,2 ORDER BY dividends DESC
+        WHERE {base} AND t.type='DIV' GROUP BY 1,2 ORDER BY dividends DESC
     """)
     st.plotly_chart(
         px.bar(df, x="ticker", y="dividends", color="account", title="Dividend income by security"),
@@ -84,7 +84,7 @@ with tab_inc:
     nrt = q(f"""
         SELECT a.name AS account, round(-sum(amount),2) AS withholding_lost
         FROM transactions t JOIN accounts a USING(account_id)
-        WHERE {base} AND type='NRT' GROUP BY 1 ORDER BY 2 DESC
+        WHERE {base} AND t.type='NRT' GROUP BY 1 ORDER BY 2 DESC
     """)
     st.subheader("US withholding tax leak by account (move these payers to RRSP)")
     st.dataframe(nrt, use_container_width=True)
@@ -94,7 +94,7 @@ with tab_trades:
         SELECT t.date, a.name AS account, t.type, t.ticker, t.shares, t.price,
                t.amount, t.currency
         FROM transactions t JOIN accounts a USING(account_id)
-        WHERE {base} AND type IN ('BUY','SELL') ORDER BY t.date, t.ticker
+        WHERE {base} AND t.type IN ('BUY','SELL') ORDER BY t.date, t.ticker
     """)
     st.dataframe(df, use_container_width=True, height=500)
     flow = q(f"""
@@ -113,7 +113,7 @@ with tab_costs:
     fx = q(f"""
         SELECT date, a.name AS account, fx_rate, amount, t.currency
         FROM transactions t JOIN accounts a USING(account_id)
-        WHERE {base} AND type='FXCONVERSION' ORDER BY date
+        WHERE {base} AND t.type='FXCONVERSION' ORDER BY date
     """)
     st.subheader("FX conversions (watch the rate drift — batch these)")
     st.dataframe(fx, use_container_width=True)
