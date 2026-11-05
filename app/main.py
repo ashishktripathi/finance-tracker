@@ -54,9 +54,114 @@ c[3].metric("Sold", f"${k.sold or 0:,.0f}")
 c[4].metric("Fees", f"${k.fees or 0:,.2f}")
 c[5].metric("Active tickers", int(k.active_tickers or 0))
 
-tab_act, tab_inc, tab_trades, tab_costs, tab_raw = st.tabs(
-    ["Activity", "Income", "Trades", "Costs & FX", "Raw"]
+tab_sum, tab_act, tab_inc, tab_trades, tab_costs, tab_raw = st.tabs(
+    ["Summary", "Activity", "Income", "Trades", "Costs & FX", "Raw"]
 )
+
+with tab_sum:
+    st.subheader(f"Month in review — {period}")
+    st.caption("CAD and USD amounts are shown in their own currency (FX normalization comes in phase 2).")
+
+    cur = q(f"""
+        SELECT currency,
+               round(sum(CASE WHEN type='BUY'    THEN -amount END),0) AS bought,
+               round(sum(CASE WHEN type='SELL'   THEN  amount END),0) AS sold,
+               round(sum(CASE WHEN type='DIV'    THEN  amount END),2) AS dividends,
+               round(sum(CASE WHEN type='NRT'    THEN  amount END),2) AS withholding,
+               round(sum(CASE WHEN type='FEE'    THEN  amount END),2) AS fees,
+               round(sum(CASE WHEN type='FPLINT' THEN  amount END),2) AS lending
+        FROM transactions WHERE {base} AND currency IS NOT NULL
+        GROUP BY 1 ORDER BY 1
+    """).fillna(0)
+    for _, r in cur.iterrows():
+        net = (r.bought or 0) - (r.sold or 0)
+        direction = "net ADDED to the market" if net >= 0 else "net TAKEN OUT of the market"
+        st.markdown(
+            f"**{r.currency}** &nbsp;·&nbsp; bought **${r.bought:,.0f}**, sold **${r.sold:,.0f}** "
+            f"→ **${abs(net):,.0f} {direction}** &nbsp;·&nbsp; income ${r.dividends + r.lending:,.2f} "
+            f"&nbsp;·&nbsp; costs ${abs(r.withholding) + abs(r.fees):,.2f}"
+        )
+
+    c1, c2 = st.columns(2)
+    mv = q(f"""
+        SELECT ticker,
+               round(sum(CASE WHEN type='BUY' THEN -amount ELSE 0 END)
+                   - sum(CASE WHEN type='SELL' THEN amount ELSE 0 END),0) AS net_invested
+        FROM transactions WHERE {base} AND type IN ('BUY','SELL')
+        GROUP BY 1
+    """)
+    with c1:
+        st.markdown("**Biggest adds (net new money)**")
+        st.dataframe(mv.sort_values("net_invested", ascending=False).head(5),
+                     use_container_width=True, hide_index=True)
+    with c2:
+        st.markdown("**Biggest exits / trims**")
+        st.dataframe(mv.sort_values("net_invested").head(5),
+                     use_container_width=True, hide_index=True)
+
+    c3, c4 = st.columns(2)
+    with c3:
+        st.markdown("**Top income payers**")
+        st.dataframe(q(f"""
+            SELECT ticker, round(sum(amount),2) AS dividends, max(currency) AS ccy
+            FROM transactions WHERE {base} AND type='DIV'
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 5
+        """), use_container_width=True, hide_index=True)
+    with c4:
+        st.markdown("**Account cash flows**")
+        st.dataframe(q(f"""
+            SELECT a.name AS account,
+                   round(sum(CASE WHEN t.type='BUY'  THEN -t.amount END),0) AS bought,
+                   round(sum(CASE WHEN t.type='SELL' THEN  t.amount END),0) AS sold,
+                   round(sum(CASE WHEN t.type='DIV'  THEN  t.amount END),2) AS dividends
+            FROM transactions t JOIN accounts a USING(account_id)
+            WHERE {base} GROUP BY 1 ORDER BY bought DESC NULLS LAST
+        """), use_container_width=True, hide_index=True)
+
+    # ---- auto-generated flags ----
+    st.markdown("---")
+    st.markdown("**What stands out**")
+    flags = []
+
+    fx = q(f"""
+        SELECT count(*) AS n, round(sum(CASE WHEN amount < 0 THEN -amount END),0) AS converted,
+               min(fx_rate) AS lo, max(fx_rate) AS hi
+        FROM transactions WHERE {base} AND type='FXCONVERSION'
+    """).iloc[0]
+    if fx.n and fx.n > 1 and fx.lo and fx.hi and fx.hi > fx.lo:
+        flags.append(f"🔶 **{int(fx.n)} separate FX conversions** at rates {fx.lo:.2f}–{fx.hi:.2f}. "
+                     f"Each small conversion locks in whatever rate that day offers — batch them.")
+
+    leak = q(f"""
+        SELECT a.name AS account, round(-sum(t.amount),2) AS lost
+        FROM transactions t JOIN accounts a USING(account_id)
+        WHERE {base} AND t.type='NRT' AND a.name NOT ILIKE '%rrsp%'
+        GROUP BY 1 ORDER BY 2 DESC
+    """)
+    if not leak.empty and leak.lost.sum() > 0:
+        flags.append(f"🔶 **US withholding tax outside the RRSP: ${leak.lost.sum():,.2f}** "
+                     f"({', '.join(leak.account)}). US dividend payers belong in the RRSP, "
+                     f"where the 15% is waived.")
+
+    buys_total = mv[mv.net_invested > 0].net_invested.sum()
+    if buys_total > 0 and not mv.empty:
+        top = mv.sort_values("net_invested", ascending=False).iloc[0]
+        share = top.net_invested / buys_total
+        if share > 0.35:
+            flags.append(f"🔶 **{top.ticker} took {share:.0%} of this month's net new money** "
+                         f"(${top.net_invested:,.0f}). One conviction is fine; check it against "
+                         f"your position-size caps.")
+
+    unp = q(f"SELECT count(*) AS n FROM transactions WHERE {base} AND type='UNPARSED'").iloc[0].n
+    if unp:
+        flags.append(f"🔴 **{int(unp)} unparsed rows** — run the ingest validation and add "
+                     f"aliases/patterns before trusting this month's numbers.")
+
+    if not flags:
+        flags.append("✅ Nothing unusual this month: no FX drift, no withholding leak, "
+                     "no concentration spike, all rows parsed.")
+    for f in flags:
+        st.markdown(f)
 
 with tab_act:
     df = q(f"""
